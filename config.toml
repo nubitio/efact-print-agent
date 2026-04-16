@@ -1,0 +1,17 @@
+# efact-printer-agent configuration
+# Place this file next to the binary, or at:
+#   Linux/Mac: ~/.config/efact-printer-agent/config.toml
+#   Windows:   %APPDATA%\efact-printer-agent\config.toml
+#
+# All fields are optional — defaults work for most Epson/Star thermal printers.
+
+# HTTP port the agent listens on (localhost only)
+port = 8765
+
+# Uncomment and set to target a specific printer by USB IDs (hex strings).
+# Run the agent once to see detected printers: GET http://localhost:8765/printers
+# usb_vendor_id = "04b8"   # Epson
+# usb_product_id = "0202"
+
+# Write chunk size in bytes (default 4096)
+# chunk_size = 4096
