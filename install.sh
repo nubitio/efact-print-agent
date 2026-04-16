@@ -95,6 +95,8 @@ EOF
 
 setup_launchagent() {
   PLIST="${HOME}/Library/LaunchAgents/io.nubit.efact-printer-agent.plist"
+  LABEL="io.nubit.efact-printer-agent"
+  DOMAIN="gui/$(id -u)"
   cat > "${PLIST}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -118,7 +120,12 @@ setup_launchagent() {
 </dict>
 </plist>
 EOF
-  launchctl load "${PLIST}"
+
+  # `launchctl load` is unreliable on newer macOS versions and may emit
+  # confusing I/O errors during reinstalls. Refresh the user agent explicitly.
+  launchctl bootout "${DOMAIN}"/"${LABEL}" &>/dev/null || true
+  launchctl bootstrap "${DOMAIN}" "${PLIST}"
+  launchctl kickstart -k "${DOMAIN}"/"${LABEL}"
   ok "LaunchAgent registered and started."
 }
 
