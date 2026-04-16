@@ -73,8 +73,8 @@ pub(crate) async fn run_server(
         .route("/health", get(health))
         .route("/printers", get(list_printers))
         .route("/print", post(print_raw))
-        .layer(axum::middleware::from_fn(private_network_access))
         .layer(cors)
+        .layer(axum::middleware::from_fn(private_network_access))
         .with_state(state);
 
     let addr = format!("127.0.0.1:{port}");
