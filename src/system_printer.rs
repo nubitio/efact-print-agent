@@ -38,6 +38,19 @@ impl SystemPrinterManager {
     }
 }
 
+fn is_virtual_printer_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    [
+        "microsoft print to pdf",
+        "microsoft xps document writer",
+        "fax",
+        "onenote",
+        "send to onenote",
+    ]
+    .iter()
+    .any(|virtual_name| normalized.contains(virtual_name))
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn list_system_printers() -> Result<Vec<String>, SystemPrinterError> {
     let output = Command::new("lpstat").arg("-p").output()?;
@@ -53,6 +66,7 @@ fn list_system_printers() -> Result<Vec<String>, SystemPrinterError> {
             let rest = line.strip_prefix("printer ")?;
             Some(rest.split_whitespace().next()?.to_string())
         })
+        .filter(|name| !is_virtual_printer_name(name))
         .collect::<Vec<_>>();
 
     if printers.is_empty() {
@@ -79,6 +93,7 @@ fn list_system_printers() -> Result<Vec<String>, SystemPrinterError> {
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
+        .filter(|line| !is_virtual_printer_name(line))
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
 

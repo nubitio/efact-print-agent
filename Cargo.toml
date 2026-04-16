@@ -20,6 +20,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
 
+# Tray icon and event loop — supported on Windows, macOS, and Linux.
+# Linux additionally requires libappindicator3 (apt: libayatana-appindicator3-dev).
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+tracing-appender = "0.2"
+tray-icon = "0.22"
+winit = "0.30"
+
 [profile.release]
 opt-level = "z"
 lto = true

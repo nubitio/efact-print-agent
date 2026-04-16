@@ -42,6 +42,8 @@ The installer will:
 
 By default the agent tries USB HID first and falls back to the system printer backend. Set `prefer_system_backend = true` to reverse that order.
 
+On Windows, the agent runs as a tray application instead of leaving a console window open. Logs are written to `%LOCALAPPDATA%\efact-printer-agent\agent.log`.
+
 ## Configuration
 
 The agent loads `config.toml` from the first location found:
@@ -69,6 +71,10 @@ port = 8765
 # Try the system print backend before USB HID.
 # prefer_system_backend = true
 ```
+
+If multiple system printers are installed and `system_printer_name` is not set, the agent prints to the OS default printer.
+
+Common virtual printers such as `Microsoft Print to PDF` and `Microsoft XPS Document Writer` are excluded from `/printers`.
 
 ### Supported printers
 

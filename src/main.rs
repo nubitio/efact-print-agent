@@ -1,17 +1,23 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
 mod config;
 mod printer;
 mod system_printer;
+mod tray;
 
 use axum::{
-    Router,
     body::Bytes,
     extract::State,
     http::StatusCode,
     response::Json,
     routing::{get, post},
+    Router,
 };
-use serde_json::{Value, json};
-use std::sync::Arc;
+use serde_json::{json, Value};
+use std::{future::Future, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
@@ -23,20 +29,41 @@ struct AppState {
     printer: Arc<PrinterManager>,
 }
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "efact_printer_agent=info".into()),
-        )
-        .init();
+fn main() {
+    init_tracing();
 
     let config = AgentConfig::load();
-    let port = config.port;
+    let state = AppState {
+        printer: Arc::new(PrinterManager::new(config.clone())),
+    };
 
-    let printer = Arc::new(PrinterManager::new(config));
-    let state = AppState { printer };
+    // The tray event loop must run on the main thread on all platforms.
+    tray::run(config, state);
+}
 
+fn init_tracing() {
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "efact_printer_agent=info".into());
+    let log_dir = tray::log_dir();
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let file_appender = tracing_appender::rolling::never(log_dir, "agent.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .init();
+
+    // Keep the guard alive for the process lifetime.
+    std::mem::forget(guard);
+}
+
+pub(crate) async fn run_server(
+    state: AppState,
+    port: u16,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -52,8 +79,13 @@ async fn main() {
     let addr = format!("127.0.0.1:{port}");
     info!("efact-printer-agent listening on http://{addr}");
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+        .unwrap();
+
+    Ok(())
 }
 
 async fn health() -> Json<Value> {

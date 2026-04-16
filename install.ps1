@@ -46,6 +46,10 @@ Expand-Archive -Path $ZIP_PATH -DestinationPath $TMP -Force
 
 # ── install binary ────────────────────────────────────────────────────────────
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
+
+# Stop any running instance before replacing the binary.
+Get-Process "efact-printer-agent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 Copy-Item (Join-Path $TMP $BINARY) (Join-Path $INSTALL_DIR $BINARY) -Force
 Write-Info "Binary installed to $INSTALL_DIR\$BINARY"
 
@@ -71,9 +75,10 @@ $TASK_NAME = "efact-printer-agent"
 $EXE_PATH  = Join-Path $INSTALL_DIR $BINARY
 
 # Remove existing task if present
+Stop-ScheduledTask -TaskName $TASK_NAME -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
 
-$action  = New-ScheduledTaskAction -Execute $EXE_PATH
+$action  = New-ScheduledTaskAction -Execute $EXE_PATH -WorkingDirectory $INSTALL_DIR
 $trigger = New-ScheduledTaskTrigger -AtLogon -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
   -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
@@ -94,6 +99,7 @@ Start-ScheduledTask -TaskName $TASK_NAME
 Write-Ok "efact-printer-agent $TAG installed successfully."
 Write-Ok "Agent running on http://localhost:8765"
 Write-Ok "Config: $CONFIG_FILE"
+Write-Ok "Logs: $INSTALL_DIR\agent.log"
 Write-Ok "Autostart: Task Scheduler task '$TASK_NAME' registered for current user."
 
 # Cleanup
