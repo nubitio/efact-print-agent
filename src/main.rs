@@ -11,8 +11,8 @@ mod tray;
 use axum::{
     body::Bytes,
     extract::State,
-    http::StatusCode,
-    response::Json,
+    http::{HeaderValue, Method, StatusCode},
+    response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
@@ -73,6 +73,7 @@ pub(crate) async fn run_server(
         .route("/health", get(health))
         .route("/printers", get(list_printers))
         .route("/print", post(print_raw))
+        .layer(axum::middleware::from_fn(private_network_access))
         .layer(cors)
         .with_state(state);
 
@@ -86,6 +87,33 @@ pub(crate) async fn run_server(
         .unwrap();
 
     Ok(())
+}
+
+/// Chrome's Private Network Access (PNA) spec requires that servers responding
+/// to requests from public HTTPS origins to loopback addresses include
+/// `Access-Control-Allow-Private-Network: true` in their preflight response.
+/// See: https://wicg.github.io/private-network-access/
+async fn private_network_access(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let is_preflight = req.method() == Method::OPTIONS
+        && req
+            .headers()
+            .contains_key("access-control-request-private-network");
+
+    let mut response = next.run(req).await;
+
+    response.headers_mut().insert(
+        "Access-Control-Allow-Private-Network",
+        HeaderValue::from_static("true"),
+    );
+
+    if is_preflight {
+        *response.status_mut() = StatusCode::NO_CONTENT;
+    }
+
+    response
 }
 
 async fn health() -> Json<Value> {
