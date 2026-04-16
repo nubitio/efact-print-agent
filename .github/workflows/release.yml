@@ -16,9 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64 (musl = fully static binary)
+          # Linux x86_64 (glibc — native build on ubuntu runner, no cross-compilation issues)
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
             artifact: efact-printer-agent
             archive: efact-printer-agent-linux-x86_64.tar.gz
 
@@ -48,12 +48,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # musl-tools for static linking; clang to compile vendored hid.c (no libudev needed)
-      - name: Install musl tools (Linux)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      # libudev-dev needed by hidapi on Linux
+      - name: Install hidapi deps (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y musl-tools clang
+          sudo apt-get install -y libudev-dev pkg-config
 
       # hidapi depends on IOKit on macOS (already present) and hid.dll on Windows (vendored by hidapi crate)
       - name: Install hidapi deps (macOS)
@@ -61,9 +61,6 @@ jobs:
         run: brew install hidapi
 
       - name: Build release binary
-        env:
-          # Tell hidapi's build.rs to skip libudev detection on musl targets
-          LIBUDEV_NO_PKG_CONFIG: ${{ matrix.target == 'x86_64-unknown-linux-musl' && '1' || '' }}
         run: cargo build --release --target ${{ matrix.target }}
 
       # ---------- package ----------
