@@ -3,6 +3,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use thiserror::Error;
 
 use crate::config::AgentConfig;
@@ -81,6 +84,7 @@ fn list_system_printers() -> Result<Vec<String>, SystemPrinterError> {
     let script = "Get-Printer | Select-Object -ExpandProperty Name";
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()?;
 
     if !output.status.success() {
@@ -210,6 +214,7 @@ try {{
 
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()?;
 
     if !output.status.success() {
