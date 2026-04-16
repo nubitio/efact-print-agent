@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64 (musl = fully static binary)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: efact-printer-agent
+            archive: efact-printer-agent-linux-x86_64.tar.gz
+
+          # macOS x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: efact-printer-agent
+            archive: efact-printer-agent-macos-x86_64.tar.gz
+
+          # macOS Apple Silicon
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: efact-printer-agent
+            archive: efact-printer-agent-macos-arm64.tar.gz
+
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: efact-printer-agent.exe
+            archive: efact-printer-agent-windows-x86_64.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # musl libc + hidapi native deps for static Linux build
+      - name: Install musl tools (Linux)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y musl-tools libudev-dev libhidapi-dev pkg-config
+
+      # hidapi depends on IOKit on macOS (already present) and hid.dll on Windows (vendored by hidapi crate)
+      - name: Install hidapi deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install hidapi
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # ---------- package ----------
+
+      - name: Package (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cp config.toml target/${{ matrix.target }}/release/
+          cd target/${{ matrix.target }}/release
+          tar czf "../../../${{ matrix.archive }}" ${{ matrix.artifact }} config.toml
+          cd -
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item config.toml "target\${{ matrix.target }}\release\"
+          Compress-Archive `
+            -Path "target\${{ matrix.target }}\release\${{ matrix.artifact }}", `
+                  "target\${{ matrix.target }}\release\config.toml" `
+            -DestinationPath "${{ matrix.archive }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
