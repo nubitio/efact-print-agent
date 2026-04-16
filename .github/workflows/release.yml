@@ -48,12 +48,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # libudev-dev needed by hidapi on Linux
-      - name: Install hidapi deps (Linux)
+      # libudev-dev: hidapi; libgtk-3-dev + libayatana-appindicator3-dev: tray icon
+      - name: Install Linux system deps
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libudev-dev pkg-config
+          sudo apt-get install -y \
+            libudev-dev \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
 
       # hidapi depends on IOKit on macOS (already present) and hid.dll on Windows (vendored by hidapi crate)
       - name: Install hidapi deps (macOS)
