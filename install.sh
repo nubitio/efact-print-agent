@@ -38,6 +38,24 @@ case "${OS}" in
   *) err "Unsupported OS: ${OS}" ;;
 esac
 
+# ── Linux: ensure libappindicator3 is present (required for tray icon) ────────
+if [ "${OS}" = "Linux" ]; then
+  if ! ldconfig -p 2>/dev/null | grep -q 'libayatana-appindicator3\|libappindicator3'; then
+    info "libappindicator3 not found — attempting to install..."
+    if command -v apt-get &>/dev/null; then
+      sudo apt-get install -y libayatana-appindicator3-1 2>/dev/null \
+        || sudo apt-get install -y libappindicator3-1
+    elif command -v dnf &>/dev/null; then
+      sudo dnf install -y libappindicator-gtk3
+    elif command -v pacman &>/dev/null; then
+      sudo pacman -S --noconfirm libappindicator-gtk3
+    else
+      err "Cannot install libappindicator3 automatically. Please install it manually and re-run this script."
+    fi
+    ok "libappindicator3 installed."
+  fi
+fi
+
 # ── latest release tag ────────────────────────────────────────────────────────
 info "Fetching latest release..."
 TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
