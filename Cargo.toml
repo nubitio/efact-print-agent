@@ -15,7 +15,8 @@ tower-http = { version = "0.5", features = ["cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-hidapi = "2"
+# linux-static-hidraw compiles hid.c directly — no libudev, works with musl
+hidapi = { version = "2", default-features = false, features = ["linux-static-hidraw"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
