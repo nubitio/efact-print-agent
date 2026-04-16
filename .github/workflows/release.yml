@@ -58,7 +58,8 @@ jobs:
             pkg-config \
             libglib2.0-dev \
             libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            libxdo-dev
 
       # hidapi depends on IOKit on macOS (already present) and hid.dll on Windows (vendored by hidapi crate)
       - name: Install hidapi deps (macOS)
