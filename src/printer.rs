@@ -2,6 +2,7 @@ use hidapi::{HidApi, HidDevice};
 use thiserror::Error;
 
 use crate::config::AgentConfig;
+use crate::system_printer::{SystemPrinterError, SystemPrinterManager};
 
 /// Known thermal printer USB vendor IDs (decimal).
 /// Covers Epson, Star Micronics, Bixolon, Citizen, Sewoo, Rongta, Xprinter.
@@ -26,20 +27,27 @@ pub enum PrinterError {
 
     #[error("Write error: wrote {written} of {total} bytes")]
     IncompleteWrite { written: usize, total: usize },
+
+    #[error(transparent)]
+    System(#[from] SystemPrinterError),
 }
 
 pub struct PrinterManager {
     config: AgentConfig,
+    system: SystemPrinterManager,
 }
 
 impl PrinterManager {
     pub fn new(config: AgentConfig) -> Self {
-        Self { config }
+        Self {
+            system: SystemPrinterManager::new(config.clone()),
+            config,
+        }
     }
 
     /// Returns a list of detected thermal printer names for the /printers endpoint.
     pub fn list(&self) -> Vec<String> {
-        match HidApi::new() {
+        let mut printers = match HidApi::new() {
             Err(_) => vec![],
             Ok(api) => api
                 .device_list()
@@ -53,18 +61,78 @@ impl PrinterManager {
                     )
                 })
                 .collect(),
+        };
+
+        for printer in self.system.list() {
+            if !printers.iter().any(|existing| existing == &printer) {
+                printers.push(printer);
+            }
         }
+
+        printers
     }
 
     /// Opens the first matching device and writes all ESC/POS bytes to it.
     pub fn print(&self, data: &[u8]) -> Result<(), PrinterError> {
-        let api = HidApi::new()?;
+        if self.config.prefer_system_backend {
+            return self.print_system_then_hid(data);
+        }
 
-        let device = self.open_device(&api)?;
-        self.write_all(&device, data)?;
+        self.print_hid_then_system(data)
+    }
 
-        tracing::info!("Printed {} bytes successfully", data.len());
-        Ok(())
+    fn print_hid_then_system(&self, data: &[u8]) -> Result<(), PrinterError> {
+        let api = match HidApi::new() {
+            Ok(api) => api,
+            Err(err) => {
+                tracing::warn!("Failed to initialize HID backend: {err}");
+                self.system.print(data)?;
+                tracing::info!(
+                    "Printed {} bytes successfully via system backend",
+                    data.len()
+                );
+                return Ok(());
+            }
+        };
+
+        match self.open_device(&api) {
+            Ok(device) => {
+                self.write_all(&device, data)?;
+                tracing::info!("Printed {} bytes successfully via HID", data.len());
+                Ok(())
+            }
+            Err(PrinterError::NotFound) => {
+                tracing::info!("No HID printer found, falling back to system backend");
+                self.system.print(data)?;
+                tracing::info!(
+                    "Printed {} bytes successfully via system backend",
+                    data.len()
+                );
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn print_system_then_hid(&self, data: &[u8]) -> Result<(), PrinterError> {
+        match self.system.print(data) {
+            Ok(()) => {
+                tracing::info!(
+                    "Printed {} bytes successfully via system backend",
+                    data.len()
+                );
+                Ok(())
+            }
+            Err(SystemPrinterError::NotFound) => {
+                tracing::info!("No system printer found, falling back to HID backend");
+                let api = HidApi::new()?;
+                let device = self.open_device(&api)?;
+                self.write_all(&device, data)?;
+                tracing::info!("Printed {} bytes successfully via HID", data.len());
+                Ok(())
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     // ── private ──────────────────────────────────────────────────────────────

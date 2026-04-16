@@ -1,11 +1,11 @@
 # efact-printer-agent
 
-Local USB printer agent for [efact](https://github.com/nubitio). Receives raw ESC/POS bytes from the browser and forwards them directly to a thermal printer over USB — no QZ Tray, no Java, no browser extensions required.
+Local printer agent for [efact](https://github.com/nubitio). Receives raw ESC/POS bytes from the browser and forwards them either directly to a USB HID thermal printer or through the operating system print spooler.
 
 ## How it works
 
 ```
-efact frontend  →  POST /print (raw ESC/POS)  →  efact-printer-agent  →  USB thermal printer
+efact frontend  →  POST /print (raw ESC/POS)  →  efact-printer-agent  →  HID printer or system spooler
 ```
 
 The agent runs as a background process on the client machine, listening on `localhost:8765`. The efact frontend detects it via the `feature_local_agent_print` tenant flag and posts print jobs directly.
@@ -35,10 +35,12 @@ The installer will:
 | Method | Endpoint    | Description                              |
 |--------|-------------|------------------------------------------|
 | GET    | `/health`   | Liveness check → `{ status, version }`  |
-| GET    | `/printers` | List detected thermal printers           |
+| GET    | `/printers` | List HID and system printers             |
 | POST   | `/print`    | Send raw ESC/POS bytes to printer        |
 
 `POST /print` expects `Content-Type: application/octet-stream` and returns `204 No Content` on success.
+
+By default the agent tries USB HID first and falls back to the system printer backend. Set `prefer_system_backend = true` to reverse that order.
 
 ## Configuration
 
@@ -60,6 +62,12 @@ port = 8765
 
 # Write chunk size in bytes (default: 4096)
 # chunk_size = 4096
+
+# Send jobs to a named OS printer instead of the default one.
+# system_printer_name = "POS_D_BASIC_230"
+
+# Try the system print backend before USB HID.
+# prefer_system_backend = true
 ```
 
 ### Supported printers

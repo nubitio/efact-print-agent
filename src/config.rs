@@ -25,6 +25,14 @@ pub struct AgentConfig {
     /// Chunk size in bytes when writing to USB. Default: 4096
     #[serde(default = "default_chunk_size")]
     pub chunk_size: usize,
+
+    /// Optional system printer name to target through the OS print spooler.
+    /// If omitted, the default system printer is used.
+    pub system_printer_name: Option<String>,
+
+    /// Prefer the system print backend before trying USB HID.
+    #[serde(default)]
+    pub prefer_system_backend: bool,
 }
 
 fn default_port() -> u16 {
@@ -47,6 +55,8 @@ impl Default for AgentConfig {
             usb_product_id: None,
             usb_endpoint: default_endpoint(),
             chunk_size: default_chunk_size(),
+            system_printer_name: None,
+            prefer_system_backend: false,
         }
     }
 }
