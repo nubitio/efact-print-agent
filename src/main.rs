@@ -18,7 +18,6 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::{future::Future, sync::Arc};
-use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 use config::AgentConfig;
@@ -64,17 +63,11 @@ pub(crate) async fn run_server(
     port: u16,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let app = Router::new()
         .route("/health", get(health))
         .route("/printers", get(list_printers))
         .route("/print", post(print_raw))
-        .layer(cors)
-        .layer(axum::middleware::from_fn(private_network_access))
+        .layer(axum::middleware::from_fn(cors_and_pna))
         .with_state(state);
 
     let addr = format!("127.0.0.1:{port}");
@@ -89,30 +82,31 @@ pub(crate) async fn run_server(
     Ok(())
 }
 
-/// Chrome's Private Network Access (PNA) spec requires that servers responding
-/// to requests from public HTTPS origins to loopback addresses include
-/// `Access-Control-Allow-Private-Network: true` in their preflight response.
-/// See: https://wicg.github.io/private-network-access/
-async fn private_network_access(
+/// Unified CORS + Chrome Private Network Access middleware.
+/// CorsLayer from tower_http short-circuits OPTIONS responses internally,
+/// making it impossible to inject PNA headers from an outer middleware.
+/// This middleware handles both concerns in one place.
+async fn cors_and_pna(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let is_preflight = req.method() == Method::OPTIONS
-        && req
-            .headers()
-            .contains_key("access-control-request-private-network");
+    let is_preflight = req.method() == Method::OPTIONS;
 
-    let mut response = next.run(req).await;
-
-    response.headers_mut().insert(
-        "Access-Control-Allow-Private-Network",
-        HeaderValue::from_static("true"),
-    );
-
+    // For preflights, skip the handler entirely and build the response here.
     if is_preflight {
-        *response.status_mut() = StatusCode::NO_CONTENT;
+        let mut res = StatusCode::NO_CONTENT.into_response();
+        let h = res.headers_mut();
+        h.insert("Access-Control-Allow-Origin",          HeaderValue::from_static("*"));
+        h.insert("Access-Control-Allow-Methods",         HeaderValue::from_static("GET, POST, OPTIONS"));
+        h.insert("Access-Control-Allow-Headers",         HeaderValue::from_static("*"));
+        h.insert("Access-Control-Allow-Private-Network", HeaderValue::from_static("true"));
+        return res;
     }
 
+    let mut response = next.run(req).await;
+    let h = response.headers_mut();
+    h.insert("Access-Control-Allow-Origin",          HeaderValue::from_static("*"));
+    h.insert("Access-Control-Allow-Private-Network", HeaderValue::from_static("true"));
     response
 }
 
